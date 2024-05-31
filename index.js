@@ -5,12 +5,14 @@ require("dotenv").config();
 const mongoose = require("mongoose");
 const user = require("./models/User");
 const project = require("./models/Project")
-
-
+const { Server } = require('socket.io')
+const Redis = require('ioredis')
+const cors = require('cors');
 
 const app = express()
+app.use(cors());
 const PORT =process.env.PORT || 9000
-
+const subscriber = new Redis(process.env.redisp)
 mongoose
   .connect(
     process.env.mogo_uri
@@ -25,7 +27,17 @@ mongoose
     console.log("Connection failed!");
   });
 
+  const io = new Server({ cors: '*' })
 
+  io.on('connection', socket => {
+      socket.on('subscribe', channel => {
+          socket.join(channel)
+          socket.emit('message', `Joined ${channel}`)
+      })
+  })
+  
+  io.listen(9002, () => console.log('Socket Server 9002'))
+  
 
 
 
@@ -94,7 +106,16 @@ app.post('/project', async (req, res) => {
     return res.json({ status: 'queued', data: { projectSlug, url: `http://${projectSlug}.dd-3.shop:8000` } })
 
 })
+async function initRedisSubscribe() {
+  console.log('Subscribed to logs....')
+  subscriber.psubscribe('logs:*')
+  subscriber.on('pmessage', (pattern, channel, message) => {
+      io.to(channel).emit('message', message)
+  })
+}
 
+
+initRedisSubscribe()
 
 
 
